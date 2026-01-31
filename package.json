@@ -1,20 +1,21 @@
 {
   "name": "office-booking",
   "version": "1.0.0",
-  "description": "Приложение для бронирования мест в офисе",
+  "description": "Office booking system",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "auto": "nodemon --watch server.js --exec \"node server.js\" & npx browser-sync start --proxy 'localhost:3000' --files 'public/*' --no-ui --no-notify"
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "body-parser": "^1.20.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11",
-    "browser-sync": "*"
-  }
+    "nodemon": "^3.1.11"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
