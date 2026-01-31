@@ -122,8 +122,14 @@ async function load() {
 
   const res = await fetch(url);
   const data = await res.json();
-  renderTable(data);
-  renderMap(data);
+
+  // Проверяем, есть ли данные
+  if (data && data.length) {
+    renderTable(data);
+    renderMap(data);
+  } else {
+    alert("Нет данных для отображения.");
+  }
 }
 
 // Очистка фильтров
@@ -159,7 +165,6 @@ async function book() {
     alert("Бронирование успешно!");
   }
 
-  // Загружаем новые данные после бронирования
   load();
 }
 
@@ -192,7 +197,7 @@ function renderMap(bookings) {
   if (!selectedDate) return;
 
   const weekDates = getWeekDates(selectedDate);
-  const currentDay = new Date().toISOString().split("T")[0];
+  const currentDay = new Date().toISOString().split("T")[0]; // Убираем время
 
   seats.forEach(s => {
     const seatBookings = bookings.filter(b => b.seat === s);

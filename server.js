@@ -1,8 +1,9 @@
 const express = require('express');
 const path = require('path');
-const { Client } = require('pg');  // Подключаем библиотеку для работы с PostgreSQL
+const { Client } = require('pg');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const moment = require('moment');  // Подключаем библиотеку moment
 const app = express();
 
 // Подключение к базе данных PostgreSQL
@@ -62,10 +63,19 @@ app.get('/api/bookings', async (req, res) => {
 
   try {
     const result = await client.query(query, params);
-    res.json(result.rows);
+    
+    // Преобразуем дату в локальный формат
+    const bookings = result.rows.map(b => {
+      return {
+        ...b,
+        day: moment(b.day).format('YYYY-MM-DD')  // Преобразуем дату в локальный формат (например, 2026-01-30)
+      };
+    });
+
+    res.json(bookings);
   } catch (err) {
     console.error('Error fetching bookings:', err);
-    res.status(500).json({ message: 'Ошибка при получении данных' });
+    res.status(500).json({ message: 'Ошибка при получении данных', error: err.message });
   }
 });
 
@@ -76,22 +86,24 @@ app.post('/api/bookings', async (req, res) => {
   // Проверка на уже существующее бронирование
   const checkQuery = 'SELECT * FROM bookings WHERE seat = $1 AND day = $2';
   const checkValues = [seat, day];
-  const checkResult = await client.query(checkQuery, checkValues);
-
-  if (checkResult.rows.length > 0) {
-    return res.status(400).json({ message: `Место ${seat} уже занято в этот день!` });
-  }
-
-  // Добавление нового бронирования
-  const insertQuery = 'INSERT INTO bookings (seat, employee, day) VALUES ($1, $2, $3) RETURNING *';
-  const insertValues = [seat, employee, day];
-
+  
   try {
+    const checkResult = await client.query(checkQuery, checkValues);
+
+    if (checkResult.rows.length > 0) {
+      return res.status(400).json({ message: `Место ${seat} уже занято в этот день!` });
+    }
+
+    // Добавление нового бронирования
+    const insertQuery = 'INSERT INTO bookings (seat, employee, day) VALUES ($1, $2, $3) RETURNING *';
+    const insertValues = [seat, employee, day];
+
     const result = await client.query(insertQuery, insertValues);
-    res.status(201).json(result.rows[0]); // Возвращаем данные нового бронирования
+    res.status(201).json(result.rows[0]);
+
   } catch (err) {
     console.error('Error inserting booking:', err);
-    res.status(500).json({ message: 'Ошибка при создании бронирования' });
+    res.status(500).json({ message: 'Ошибка при создании бронирования', error: err.message });
   }
 });
 
@@ -110,7 +122,7 @@ app.delete('/api/bookings/:id', async (req, res) => {
     res.status(200).json({ message: 'Бронирование отменено' });
   } catch (err) {
     console.error('Error deleting booking:', err);
-    res.status(500).json({ message: 'Ошибка при удалении бронирования' });
+    res.status(500).json({ message: 'Ошибка при удалении бронирования', error: err.message });
   }
 });
 
