@@ -1,63 +1,68 @@
-const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
-const bodyParser = require("body-parser");
-
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 const app = express();
-const db = new sqlite3.Database("./bookings.db");
+const port = process.env.PORT || 3000;
 
-const PORT = process.env.PORT || 3000;
+// Создаем базу данных SQLite для хранения бронирований
+const db = new sqlite3.Database('./bookings.db');
 
-app.use(bodyParser.json());
-app.use(express.static("public"));
+// Создаем таблицу бронирований, если ее нет
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bookings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seat TEXT,
+      employee TEXT,
+      day TEXT
+    )
+  `);
+});
 
-// Создаем таблицу бронирований, если не существует
-db.run(`
-  CREATE TABLE IF NOT EXISTS bookings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    seat TEXT,
-    employee TEXT,
-    date TEXT
-  )
-`);
+// Настройка статических файлов для фронтенда
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-// Получить все бронирования
-app.get("/api/bookings", (req, res) => {
-  db.all("SELECT * FROM bookings", (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
+// Получение всех бронирований
+app.get('/api/bookings', (req, res) => {
+  db.all('SELECT * FROM bookings', [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
   });
 });
 
-// Создать бронирование
-app.post("/api/bookings", (req, res) => {
-  const { seat, employee, date } = req.body;
-
-  db.get(
-    "SELECT * FROM bookings WHERE seat = ? AND date = ?",
-    [seat, date],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (row) return res.status(400).json({ error: "Место уже занято" });
-
-      db.run(
-        "INSERT INTO bookings (seat, employee, date) VALUES (?, ?, ?)",
-        [seat, employee, date],
-        function () {
-          res.json({ success: true, id: this.lastID });
-        }
-      );
+// Создание нового бронирования
+app.post('/api/bookings', (req, res) => {
+  const { seat, employee, day } = req.body;
+  const stmt = db.prepare('INSERT INTO bookings (seat, employee, day) VALUES (?, ?, ?)');
+  
+  stmt.run(seat, employee, day, function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json({ id: this.lastID, seat, employee, day });
     }
-  );
+  });
+
+  stmt.finalize();
 });
 
-// Отмена бронирования
-app.delete("/api/bookings/:id", (req, res) => {
-  db.run("DELETE FROM bookings WHERE id = ?", req.params.id, () =>
-    res.json({ success: true })
-  );
+// Удаление бронирования
+app.delete('/api/bookings/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM bookings WHERE id = ?', id, function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.status(200).json({ message: 'Booking canceled successfully' });
+    }
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущен: http://localhost:${PORT}`);
+// Запуск сервера
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });
