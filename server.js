@@ -1,26 +1,34 @@
 const express = require('express');
-const path = require('path');  // Для работы с путями к файлам
+const path = require('path');
 const app = express();
 const bodyParser = require('body-parser');
-const cors = require('cors');  // Если работаете с другими доменами
+const cors = require('cors');
 
 // Подключение CORS для поддержки запросов с других доменов
 app.use(cors());
 app.use(bodyParser.json());
 
 // Обработка статических файлов (например, index.html, css, js)
-app.use(express.static(path.join(__dirname, 'public'))); // Папка с фронтендом (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html')); // Отдаем ваш HTML файл по корню
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Моковые данные для бронирований (можно заменить на настоящую базу данных)
+// Моковые данные для бронирований
 const bookings = [
   { id: 1, seat: '4D26', employee: 'Сотрудник 1', day: '2023-01-01' },
   { id: 2, seat: '4D27', employee: 'Сотрудник 2', day: '2023-01-02' },
-  // Добавьте другие записи для теста
+  { id: 3, seat: '4D28', employee: 'Сотрудник 3', day: '2023-01-03' },
 ];
+
+const seats = ["4D26","4D27","4D28","4D31","4D32","4D33","4D34","4E29","4E30","4E32","4E33","4E34","4EX1","4EX2","4EX3"];
+const employees = Array.from({length: 22}, (_, i) => `Сотрудник ${i + 1}`);
+
+// API для получения списка сотрудников и мест
+app.get('/api/employee-seats', (req, res) => {
+  res.json({ employees, seats });
+});
 
 // API для получения всех бронирований с фильтрацией
 app.get('/api/bookings', (req, res) => {

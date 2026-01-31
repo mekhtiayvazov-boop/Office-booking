@@ -1,26 +1,26 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<title>Бронирование мест</title>
-<style>
-body { font-family: Arial; background:#f4f6f8; padding:30px; }
-select, input, button { padding:8px; width:300px; margin:5px 0; }
-table { margin-top:20px; width:100%; border-collapse:collapse; background:#fff; }
-th, td { border:1px solid #ccc; padding:8px; text-align:center; }
-th { background:#eee; }
-.cancel { color:red; cursor:pointer; }
-#office-map { display:grid; grid-template-columns:repeat(5,120px); grid-gap:10px; margin-top:20px; }
-.seat { border-radius:8px; display:flex; justify-content:space-between; flex-direction:column; cursor:pointer; user-select:none; padding:5px; background:#eaeaea; }
-.seat-name { text-align:center; font-weight:bold; margin-bottom:3px; }
-.day-block { flex:1; margin:1px 0; border-radius:4px; color:white; font-size:10px; display:flex; align-items:center; justify-content:center; transition: transform .1s; }
-.day-block.available { background:#28a745; }
-.day-block.taken { background:#dc3545; }
-.day-block.current-day { background:#ffc107; }
-.day-block:hover { transform: scale(1.1); }
-#week-nav { display: flex; justify-content: space-between; margin-bottom: 20px; }
-#week-nav button { padding: 10px; }
-</style>
+  <meta charset="UTF-8">
+  <title>Бронирование мест</title>
+  <style>
+    body { font-family: Arial; background:#f4f6f8; padding:30px; }
+    select, input, button { padding:8px; width:300px; margin:5px 0; }
+    table { margin-top:20px; width:100%; border-collapse:collapse; background:#fff; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#eee; }
+    .cancel { color:red; cursor:pointer; }
+    #office-map { display:grid; grid-template-columns:repeat(5,120px); grid-gap:10px; margin-top:20px; }
+    .seat { border-radius:8px; display:flex; justify-content:space-between; flex-direction:column; cursor:pointer; user-select:none; padding:5px; background:#eaeaea; }
+    .seat-name { text-align:center; font-weight:bold; margin-bottom:3px; }
+    .day-block { flex:1; margin:1px 0; border-radius:4px; color:white; font-size:10px; display:flex; align-items:center; justify-content:center; transition: transform .1s; }
+    .day-block.available { background:#28a745; }
+    .day-block.taken { background:#dc3545; }
+    .day-block.current-day { background:#ffc107; }
+    .day-block:hover { transform: scale(1.1); }
+    #week-nav { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    #week-nav button { padding: 10px; }
+  </style>
 </head>
 <body>
 
@@ -33,7 +33,7 @@ th { background:#eee; }
 <input type="date" id="date"><br>
 
 <label>
-<input type="checkbox" id="weekBooking"> Бронирование на всю неделю (Пн–Пт)
+  <input type="checkbox" id="weekBooking"> Бронирование на всю неделю (Пн–Пт)
 </label><br>
 
 <button onclick="book()">Забронировать</button>
@@ -56,30 +56,38 @@ th { background:#eee; }
 
 <table>
 <thead>
-<tr>
-<th>Место</th>
-<th>Сотрудник</th>
-<th>Дата</th>
-<th>День недели</th>
-<th></th>
-</tr>
+  <tr>
+    <th>Место</th>
+    <th>Сотрудник</th>
+    <th>Дата</th>
+    <th>День недели</th>
+    <th></th>
+  </tr>
 </thead>
 <tbody id="table"></tbody>
 </table>
 
 <script>
+// Список мест
 const seats = ["4D26","4D27","4D28","4D31","4D32","4D33","4D34","4E29","4E30","4E32","4E33","4E34","4EX1","4EX2","4EX3"];
-const employees = Array.from({length: 22}, (_, i) => `Сотрудник ${i + 1}`);
-const WORK_DAYS = ["Понедельник","Вторник","Среда","Четверг","Пятница"];
-
+const WORK_DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница"];
 const emp = document.getElementById("employee");
-const seat = document.getElementById("seat");
-employees.forEach(e => emp.add(new Option(e,e)));
-seats.forEach(s => seat.add(new Option(s,s)));
+const seatElement = document.getElementById("seat");
 
+// Получение списка сотрудников и мест
+async function fetchEmployeeAndSeats() {
+  const res = await fetch('/api/employee-seats');
+  const data = await res.json();
+
+  data.employees.forEach(e => emp.add(new Option(e, e)));
+  seats.forEach(s => seatElement.add(new Option(s, s)));
+}
+
+// Установка текущей даты в поле ввода
 const today = new Date().toISOString().split("T")[0];
 document.getElementById("date").value = today;
 
+// Получение дат текущей недели
 function getWeekDates(startDate) {
   const start = new Date(startDate);
   const day = start.getDay();
@@ -94,12 +102,13 @@ function getWeekDates(startDate) {
   return dates;
 }
 
+// Получение дня недели
 function getWeekday(dateString) {
-  const days = ["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"];
+  const days = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
   return days[new Date(dateString).getDay()];
 }
 
-// Загрузка с фильтрами
+// Загрузка и фильтрация данных
 async function load() {
   const params = [];
   const empFilter = document.getElementById("filterEmployee").value;
@@ -107,9 +116,9 @@ async function load() {
   const dayFilter = document.getElementById("filterDay").value;
 
   let url = "/api/bookings?";
-  if(empFilter) url += `employee=${encodeURIComponent(empFilter)}&`;
-  if(seatFilter) url += `seat=${encodeURIComponent(seatFilter)}&`;
-  if(dayFilter) url += `day=${encodeURIComponent(dayFilter)}&`;
+  if (empFilter) url += `employee=${encodeURIComponent(empFilter)}&`;
+  if (seatFilter) url += `seat=${encodeURIComponent(seatFilter)}&`;
+  if (dayFilter) url += `day=${encodeURIComponent(dayFilter)}&`;
 
   const res = await fetch(url);
   const data = await res.json();
@@ -117,6 +126,7 @@ async function load() {
   renderMap(data);
 }
 
+// Очистка фильтров
 function clearFilters() {
   document.getElementById("filterEmployee").value = "";
   document.getElementById("filterSeat").value = "";
@@ -124,6 +134,7 @@ function clearFilters() {
   load();
 }
 
+// Бронирование места
 async function book() {
   const date = document.getElementById("date").value;
   if (!date) { alert("Выберите дату!"); return; }
@@ -134,9 +145,9 @@ async function book() {
   const blockedDays = [];
   for (let d of dates) {
     const res = await fetch("/api/bookings", {
-      method:"POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seat: seat.value, employee: emp.value, day: d })
+      body: JSON.stringify({ seat: seatElement.value, employee: emp.value, day: d })
     });
     const data = await res.json();
     if (!res.ok) blockedDays.push(d);
@@ -151,10 +162,12 @@ async function book() {
   load();
 }
 
+// Отмена бронирования
 function cancel(id) {
-  fetch(`/api/bookings/${id}`, { method:"DELETE" }).then(() => load());
+  fetch(`/api/bookings/${id}`, { method: "DELETE" }).then(() => load());
 }
 
+// Отображение таблицы бронирований
 function renderTable(data) {
   const table = document.getElementById("table");
   table.innerHTML = "";
@@ -169,6 +182,7 @@ function renderTable(data) {
   });
 }
 
+// Отображение карты офиса
 function renderMap(bookings) {
   const map = document.getElementById("office-map");
   map.innerHTML = "";
@@ -189,35 +203,38 @@ function renderMap(bookings) {
     nameDiv.innerText = s;
     div.appendChild(nameDiv);
 
-    weekDates.forEach((dayStr,i) => {
+    weekDates.forEach((dayStr, i) => {
       const b = seatBookings.find(bk => bk.day === dayStr);
       const dayDiv = document.createElement("div");
-      dayDiv.className = "day-block " + (b ? "taken" : "available");
-      if(dayStr===currentDay) dayDiv.classList.add("current-day");
-      dayDiv.innerText = WORK_DAYS[i][0];
-      dayDiv.title = b ? `${dayStr} (${WORK_DAYS[i]}): ${b.employee}` : `${dayStr} (${WORK_DAYS[i]}): свободно`;
+      dayDiv.className = "day-block";
+
+      if (b) {
+        dayDiv.classList.add("taken");
+      } else if (dayStr === currentDay) {
+        dayDiv.classList.add("current-day");
+      } else {
+        dayDiv.classList.add("available");
+      }
+
+      dayDiv.innerText = WORK_DAYS[i];
       div.appendChild(dayDiv);
     });
-
-    div.onclick = () => {
-      const info = seatBookings.map(b => `${b.day} (${getWeekday(b.day)}): ${b.employee}`).join("\n");
-      alert(info || `Место ${s} свободно`);
-    };
 
     map.appendChild(div);
   });
 }
 
+// Изменение недели
 function changeWeek(direction) {
   const dateInput = document.getElementById("date");
   const currentDate = new Date(dateInput.value);
-  currentDate.setDate(currentDate.getDate() + direction*7);
+  currentDate.setDate(currentDate.getDate() + direction * 7);
   dateInput.value = currentDate.toISOString().split("T")[0];
   load();
 }
 
-// Старт
-load();
+// Стартовая загрузка данных
+fetchEmployeeAndSeats().then(load);
 </script>
 
 </body>
