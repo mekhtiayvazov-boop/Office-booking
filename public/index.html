@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Бронирование мест</title>
+<style>
+body { font-family: Arial; background:#f4f6f8; padding:30px; }
+select, input, button { padding:8px; width:300px; margin:5px 0; }
+table { margin-top:20px; width:100%; border-collapse:collapse; background:#fff; }
+th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+th { background:#eee; }
+.cancel { color:red; cursor:pointer; }
+#office-map { display:grid; grid-template-columns:repeat(5,120px); grid-gap:10px; margin-top:20px; }
+.seat { border-radius:8px; display:flex; justify-content:space-between; flex-direction:column; cursor:pointer; user-select:none; padding:5px; background:#eaeaea; }
+.seat-name { text-align:center; font-weight:bold; margin-bottom:3px; }
+.day-block { flex:1; margin:1px 0; border-radius:4px; color:white; font-size:10px; display:flex; align-items:center; justify-content:center; transition: transform .1s; }
+.day-block.available { background:#28a745; }
+.day-block.taken { background:#dc3545; }
+.day-block:hover { transform: scale(1.1); }
+</style>
+</head>
+<body>
+
+<h2>Бронирование мест</h2>
+
+<select id="employee"></select><br>
+<select id="seat"></select><br>
+
+<label>Выберите дату (Понедельник для недели):</label><br>
+<input type="date" id="date"><br>
+
+<label>
+<input type="checkbox" id="weekBooking"> Бронирование на всю рабочую неделю (Пн–Пт)
+</label><br>
+
+<button onclick="book()">Забронировать</button>
+
+<h2>Схема офиса</h2>
+<div id="office-map"></div>
+
+<table>
+<thead>
+<tr>
+<th>Место</th>
+<th>Сотрудник</th>
+<th>Дата</th>
+<th>День недели</th>
+<th></th>
+</tr>
+</thead>
+<tbody id="table"></tbody>
+</table>
+
+<script>
+const seats = ["D26","D27","D28","D31","D32","D33","D34","E29","E30","E32","E33","E34","EX1","EX2","EX3"];
+const employees = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22"];
+const WORK_DAYS = ["Понедельник","Вторник","Среда","Четверг","Пятница"];
+
+const emp = document.getElementById("employee");
+const seat = document.getElementById("seat");
+employees.forEach(e => emp.add(new Option(e,e)));
+seats.forEach(s => seat.add(new Option(s,s)));
+
+function getWeekday(dateString) {
+  const days = ["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"];
+  return days[new Date(dateString).getDay()];
+}
+
+// Получаем даты Пн–Пт для выбранной даты
+function getWeekDates(startDate) {
+  const start = new Date(startDate);
+  const day = start.getDay();
+  const monday = new Date(start);
+  monday.setDate(start.getDate() - ((day + 6) % 7)); // Пн = 0
+  const dates = [];
+  for (let i=0;i<5;i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate()+i);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  return dates;
+}
+
+async function load() {
+  const res = await fetch("/api/bookings");
+  const data = await res.json();
+  renderTable(data);
+  renderMap(data);
+}
+
+async function book() {
+  const date = document.getElementById("date").value;
+  if (!date) { alert("Выберите дату!"); return; }
+
+  const weekBooking = document.getElementById("weekBooking").checked;
+  let dates = weekBooking ? getWeekDates(date) : [date];
+
+  const blockedDays = [];
+  for (let d of dates) {
+    const res = await fetch("/api/bookings", {
+      method:"POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seat: seat.value, employee: emp.value, day: d })
+    });
+    const data = await res.json();
+    if (!res.ok) blockedDays.push(d);
+  }
+
+  if (blockedDays.length) {
+    alert(`Следующие дни не забронированы, так как места заняты: ${blockedDays.join(", ")}`);
+  } else {
+    alert("Бронирование успешно!");
+  }
+
+  load();
+}
+
+function cancel(id) {
+  fetch(`/api/bookings/${id}`, { method:"DELETE" })
+    .then(() => load());
+}
+
+function renderTable(data) {
+  const table = document.getElementById("table");
+  table.innerHTML = "";
+  data.forEach(b => {
+    table.innerHTML += `<tr>
+      <td>${b.seat}</td>
+      <td>${b.employee}</td>
+      <td>${b.day}</td>
+      <td>${getWeekday(b.day)}</td>
+      <td class="cancel" onclick="cancel(${b.id})">Отмена</td>
+    </tr>`;
+  });
+}
+
+function renderMap(bookings) {
+  const map = document.getElementById("office-map");
+  map.innerHTML = "";
+
+  const selectedDate = document.getElementById("date").value;
+  if (!selectedDate) return;
+
+  const weekDates = getWeekDates(selectedDate);
+
+  seats.forEach(s => {
+    const seatBookings = bookings.filter(b => b.seat === s);
+
+    const div = document.createElement("div");
+    div.className = "seat";
+
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "seat-name";
+    nameDiv.innerText = s;
+    div.appendChild(nameDiv);
+
+    weekDates.forEach((dayStr, i) => {
+      const b = seatBookings.find(bk => bk.day === dayStr);
+      const dayDiv = document.createElement("div");
+      dayDiv.className = "day-block " + (b ? "taken" : "available");
+      dayDiv.innerText = WORK_DAYS[i][0];
+      dayDiv.title = b ? `${dayStr} (${WORK_DAYS[i]}): ${b.employee}` 
+                       : `${dayStr} (${WORK_DAYS[i]}): свободно`;
+      div.appendChild(dayDiv);
+    });
+
+    div.onclick = () => {
+      const info = seatBookings.map(b => `${b.day} (${getWeekday(b.day)}): ${b.employee}`).join("\n");
+      alert(info || `Место ${s} свободно`);
+    };
+
+    map.appendChild(div);
+  });
+}
+
+load();
+</script>
+
+</body>
+</html>
