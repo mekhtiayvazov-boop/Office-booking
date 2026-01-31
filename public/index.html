@@ -26,17 +26,24 @@ th { background:#eee; }
 
 <h2>Бронирование мест</h2>
 
-<select id="employee"></select><br>
-<select id="seat"></select><br>
+<select id="employee" placeholder="Сотрудник"></select><br>
+<select id="seat" placeholder="Место"></select><br>
 
-<label>Выберите дату (Понедельник для недели):</label><br>
+<label>Выберите дату (Пн для недели):</label><br>
 <input type="date" id="date"><br>
 
 <label>
-<input type="checkbox" id="weekBooking"> Бронирование на всю рабочую неделю (Пн–Пт)
+<input type="checkbox" id="weekBooking"> Бронирование на всю неделю (Пн–Пт)
 </label><br>
 
 <button onclick="book()">Забронировать</button>
+
+<h3>Фильтры</h3>
+<input type="text" id="filterEmployee" placeholder="Фильтр по сотруднику">
+<input type="text" id="filterSeat" placeholder="Фильтр по месту">
+<input type="date" id="filterDay">
+<button onclick="load()">Применить фильтры</button>
+<button onclick="clearFilters()">Сбросить</button>
 
 <h2>Текущая неделя</h2>
 <div id="week-nav">
@@ -70,16 +77,14 @@ const seat = document.getElementById("seat");
 employees.forEach(e => emp.add(new Option(e,e)));
 seats.forEach(s => seat.add(new Option(s,s)));
 
-// Устанавливаем сегодняшнюю дату по умолчанию
 const today = new Date().toISOString().split("T")[0];
 document.getElementById("date").value = today;
 
-// Получаем дату начала недели (Понедельник)
 function getWeekDates(startDate) {
   const start = new Date(startDate);
   const day = start.getDay();
   const monday = new Date(start);
-  monday.setDate(start.getDate() - ((day + 6) % 7)); // Пн = 0
+  monday.setDate(start.getDate() - ((day + 6) % 7));
   const dates = [];
   for (let i = 0; i < 5; i++) {
     const d = new Date(monday);
@@ -89,21 +94,36 @@ function getWeekDates(startDate) {
   return dates;
 }
 
-// Получаем день недели по дате
 function getWeekday(dateString) {
   const days = ["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"];
   return days[new Date(dateString).getDay()];
 }
 
-// Загружаем данные с сервера
+// Загрузка с фильтрами
 async function load() {
-  const res = await fetch("/api/bookings");
+  const params = [];
+  const empFilter = document.getElementById("filterEmployee").value;
+  const seatFilter = document.getElementById("filterSeat").value;
+  const dayFilter = document.getElementById("filterDay").value;
+
+  let url = "/api/bookings?";
+  if(empFilter) url += `employee=${encodeURIComponent(empFilter)}&`;
+  if(seatFilter) url += `seat=${encodeURIComponent(seatFilter)}&`;
+  if(dayFilter) url += `day=${encodeURIComponent(dayFilter)}&`;
+
+  const res = await fetch(url);
   const data = await res.json();
   renderTable(data);
   renderMap(data);
 }
 
-// Кнопка бронирования
+function clearFilters() {
+  document.getElementById("filterEmployee").value = "";
+  document.getElementById("filterSeat").value = "";
+  document.getElementById("filterDay").value = "";
+  load();
+}
+
 async function book() {
   const date = document.getElementById("date").value;
   if (!date) { alert("Выберите дату!"); return; }
@@ -131,13 +151,10 @@ async function book() {
   load();
 }
 
-// Удалить бронирование
 function cancel(id) {
-  fetch(`/api/bookings/${id}`, { method:"DELETE" })
-    .then(() => load());
+  fetch(`/api/bookings/${id}`, { method:"DELETE" }).then(() => load());
 }
 
-// Отобразить таблицу с записями
 function renderTable(data) {
   const table = document.getElementById("table");
   table.innerHTML = "";
@@ -152,7 +169,6 @@ function renderTable(data) {
   });
 }
 
-// Отобразить карту с офисом
 function renderMap(bookings) {
   const map = document.getElementById("office-map");
   map.innerHTML = "";
@@ -161,11 +177,10 @@ function renderMap(bookings) {
   if (!selectedDate) return;
 
   const weekDates = getWeekDates(selectedDate);
-  const currentDay = new Date().toISOString().split("T")[0]; // Текущий день
+  const currentDay = new Date().toISOString().split("T")[0];
 
   seats.forEach(s => {
     const seatBookings = bookings.filter(b => b.seat === s);
-
     const div = document.createElement("div");
     div.className = "seat";
 
@@ -174,19 +189,13 @@ function renderMap(bookings) {
     nameDiv.innerText = s;
     div.appendChild(nameDiv);
 
-    weekDates.forEach((dayStr, i) => {
+    weekDates.forEach((dayStr,i) => {
       const b = seatBookings.find(bk => bk.day === dayStr);
       const dayDiv = document.createElement("div");
       dayDiv.className = "day-block " + (b ? "taken" : "available");
-
-      // Подсвечиваем текущий день
-      if (dayStr === currentDay) {
-        dayDiv.classList.add("current-day");
-      }
-
+      if(dayStr===currentDay) dayDiv.classList.add("current-day");
       dayDiv.innerText = WORK_DAYS[i][0];
-      dayDiv.title = b ? `${dayStr} (${WORK_DAYS[i]}): ${b.employee}` 
-                       : `${dayStr} (${WORK_DAYS[i]}): свободно`;
+      dayDiv.title = b ? `${dayStr} (${WORK_DAYS[i]}): ${b.employee}` : `${dayStr} (${WORK_DAYS[i]}): свободно`;
       div.appendChild(dayDiv);
     });
 
@@ -199,17 +208,15 @@ function renderMap(bookings) {
   });
 }
 
-// Функция изменения недели (переход вперед или назад)
 function changeWeek(direction) {
   const dateInput = document.getElementById("date");
   const currentDate = new Date(dateInput.value);
-  currentDate.setDate(currentDate.getDate() + direction * 7); // Смещаем на 7 дней
-
-  dateInput.value = currentDate.toISOString().split("T")[0]; // Устанавливаем новую дату
-  load(); // Перезагружаем данные
+  currentDate.setDate(currentDate.getDate() + direction*7);
+  dateInput.value = currentDate.toISOString().split("T")[0];
+  load();
 }
 
-// Загружаем данные при старте
+// Старт
 load();
 </script>
 
