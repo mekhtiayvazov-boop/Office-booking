@@ -1,136 +1,76 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const path = require("path");
-
-// Определяем, используем ли PostgreSQL (Render) или SQLite (локалка)
-let db, usePostgres = !!process.env.DATABASE_URL;
-if (usePostgres) {
-  const { Pool } = require("pg");
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-  db = {
-    query: (...args) => pool.query(...args),
-    cleanOldBookings: async () => {
-      const twoWeeksAgo = new Date();
-      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-      const dateStr = twoWeeksAgo.toISOString().split("T")[0];
-      await pool.query("DELETE FROM bookings WHERE day < $1", [dateStr]);
-    },
-  };
-} else {
-  const Database = require("better-sqlite3");
-  db = new Database("database.db");
-  // Создаем таблицу SQLite, если не существует
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      seat TEXT NOT NULL,
-      employee TEXT NOT NULL,
-      day TEXT NOT NULL
-    )
-  `).run();
-  // SQLite "query" wrapper
-  db.query = (sql, params) => {
-    if (sql.trim().toLowerCase().startsWith("select")) {
-      const stmt = db.prepare(sql);
-      return { rows: stmt.all(params) };
-    } else {
-      const stmt = db.prepare(sql);
-      const info = stmt.run(params);
-      return { rows: info };
-    }
-  };
-  db.cleanOldBookings = () => {
-    const twoWeeksAgo = new Date();
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-    const dateStr = twoWeeksAgo.toISOString().split("T")[0];
-    db.prepare("DELETE FROM bookings WHERE day < ?").run(dateStr);
-  };
-}
-
+const express = require('express');
+const path = require('path');  // Для работы с путями к файлам
 const app = express();
-const port = process.env.PORT || 3000;
+const bodyParser = require('body-parser');
+const cors = require('cors');  // Если работаете с другими доменами
 
+// Подключение CORS для поддержки запросов с других доменов
+app.use(cors());
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "public")));
 
-// Инициализация таблицы для PostgreSQL
-if (usePostgres) {
-  db.query(`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id SERIAL PRIMARY KEY,
-      seat TEXT NOT NULL,
-      employee TEXT NOT NULL,
-      day DATE NOT NULL
-    )
-  `);
-}
+// Обработка статических файлов (например, index.html, css, js)
+app.use(express.static(path.join(__dirname, 'public'))); // Папка с фронтендом (HTML, CSS, JS)
 
-// Автоочистка старых бронирований
-db.cleanOldBookings();
-setInterval(db.cleanOldBookings, 24*60*60*1000); // раз в день
-
-// Получение бронирований с фильтрами
-app.get("/api/bookings", async (req, res) => {
-  const { employee, seat, day } = req.query;
-  let sql, params = [];
-
-  if (usePostgres) {
-    const conditions = [];
-    if (employee) { params.push(`%${employee}%`); conditions.push(`employee ILIKE $${params.length}`); }
-    if (seat) { params.push(seat); conditions.push(`seat=$${params.length}`); }
-    if (day) { params.push(day); conditions.push(`day=$${params.length}`); }
-    sql = "SELECT * FROM bookings" + (conditions.length ? " WHERE " + conditions.join(" AND ") : "") + " ORDER BY day ASC";
-    const result = await db.query(sql, params);
-    res.json(result.rows);
-  } else {
-    const conditions = [];
-    if (employee) conditions.push(`employee LIKE '%${employee}%'`);
-    if (seat) conditions.push(`seat='${seat}'`);
-    if (day) conditions.push(`day='${day}'`);
-    sql = "SELECT * FROM bookings" + (conditions.length ? " WHERE " + conditions.join(" AND ") : "") + " ORDER BY day ASC";
-    const result = db.query(sql);
-    res.json(result.rows);
-  }
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html')); // Отдаем ваш HTML файл по корню
 });
 
-// Создание бронирования
-app.post("/api/bookings", async (req, res) => {
+// Моковые данные для бронирований (можно заменить на настоящую базу данных)
+const bookings = [
+  { id: 1, seat: '4D26', employee: 'Сотрудник 1', day: '2023-01-01' },
+  { id: 2, seat: '4D27', employee: 'Сотрудник 2', day: '2023-01-02' },
+  // Добавьте другие записи для теста
+];
+
+// API для получения всех бронирований с фильтрацией
+app.get('/api/bookings', (req, res) => {
+  const { employee, seat, day } = req.query;
+
+  let filteredBookings = bookings;
+
+  if (employee) filteredBookings = filteredBookings.filter(b => b.employee.includes(employee));
+  if (seat) filteredBookings = filteredBookings.filter(b => b.seat.includes(seat));
+  if (day) filteredBookings = filteredBookings.filter(b => b.day === day);
+
+  res.json(filteredBookings); // Возвращаем фильтрованные данные
+});
+
+// API для создания нового бронирования
+app.post('/api/bookings', (req, res) => {
   const { seat, employee, day } = req.body;
 
-  if (usePostgres) {
-    const exists = await db.query("SELECT * FROM bookings WHERE seat=$1 AND day=$2", [seat, day]);
-    if (exists.rows.length) return res.status(400).json({ error: "Место занято" });
-    const result = await db.query(
-      "INSERT INTO bookings (seat, employee, day) VALUES ($1,$2,$3) RETURNING *",
-      [seat, employee, day]
-    );
-    res.json(result.rows[0]);
-  } else {
-    const exists = db.query("SELECT * FROM bookings WHERE seat=? AND day=?", [seat, day]);
-    if (exists.rows.length) return res.status(400).json({ error: "Место занято" });
-    const result = db.query("INSERT INTO bookings (seat, employee, day) VALUES (?,?,?)", [seat, employee, day]);
-    res.json({ id: result.rows.lastInsertRowid, seat, employee, day });
+  // Проверка на уже существующее бронирование
+  const existingBooking = bookings.find(b => b.seat === seat && b.day === day);
+  if (existingBooking) {
+    return res.status(400).json({ message: `Место ${seat} уже занято в этот день!` });
   }
+
+  const newBooking = {
+    id: bookings.length + 1,
+    seat,
+    employee,
+    day
+  };
+
+  bookings.push(newBooking);  // Добавляем новое бронирование в "базу данных"
+  res.status(201).json(newBooking);  // Возвращаем данные нового бронирования
 });
 
-// Удаление бронирования
-app.delete("/api/bookings/:id", async (req, res) => {
+// API для отмены бронирования
+app.delete('/api/bookings/:id', (req, res) => {
   const { id } = req.params;
-  let result;
-  if (usePostgres) {
-    result = await db.query("DELETE FROM bookings WHERE id=$1 RETURNING *", [id]);
-    if (!result.rows.length) return res.status(404).json({ error: "Бронирование не найдено" });
-  } else {
-    result = db.query("DELETE FROM bookings WHERE id=?", [id]);
-    if (!result.rows.changes) return res.status(404).json({ error: "Бронирование не найдено" });
+  const index = bookings.findIndex(b => b.id == id);
+
+  if (index === -1) {
+    return res.status(404).json({ message: "Бронирование не найдено!" });
   }
-  res.json({ message: "Бронирование удалено" });
+
+  bookings.splice(index, 1);  // Удаляем бронирование из "базы данных"
+  res.status(200).json({ message: "Бронирование отменено" });
 });
 
+// Настройка порта сервера
+const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log(`Сервер запущен на http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
 });
